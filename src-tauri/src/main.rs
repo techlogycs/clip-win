@@ -1,16 +1,6 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use parking_lot::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
-use tauri::{
-    menu::{Menu, MenuItem},
-    tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, State, WebviewWindow,
-    WindowEvent,
-};
 use clip_win::autostart_manager;
 use clip_win::clipboard_manager::{ClipboardItem, ClipboardManager};
 use clip_win::config_manager::{resolve_window_position, ConfigManager};
@@ -24,6 +14,16 @@ use clip_win::session::is_wayland;
 use clip_win::shortcut_setup;
 use clip_win::theme_manager::{self, ThemeInfo};
 use clip_win::user_settings::{UserSettings, UserSettingsManager};
+use parking_lot::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, State, WebviewWindow,
+    WindowEvent,
+};
 
 /// Global flag to track if we started in background mode
 /// This is used to block the initial window show
@@ -272,8 +272,7 @@ async fn copy_text_to_clipboard(_state: State<'_, AppState>, text: String) -> Re
 #[tauri::command]
 async fn finish_setup(app: AppHandle) -> Result<(), String> {
     // 1. Mark first run as complete (redundant but safe)
-    clip_win::permission_checker::mark_first_run_complete()
-        .map_err(|e| e.to_string())?;
+    clip_win::permission_checker::mark_first_run_complete().map_err(|e| e.to_string())?;
 
     // 2. Close setup window
     if let Some(setup_window) = app.get_webview_window("setup") {
@@ -652,8 +651,7 @@ fn start_clipboard_watcher(app: AppHandle, clipboard_manager: Arc<Mutex<Clipboar
             // Text
             if let Ok(text) = manager.get_current_text() {
                 if !text.is_empty() {
-                    let text_hash =
-                        clip_win::clipboard_manager::calculate_hash(&text);
+                    let text_hash = clip_win::clipboard_manager::calculate_hash(&text);
 
                     if Some(text_hash) != last_text_hash {
                         last_text_hash = Some(text_hash);

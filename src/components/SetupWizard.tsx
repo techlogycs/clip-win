@@ -515,10 +515,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               </p>
             </div>
           </div>
-          <Button
-            id="copy-path"
-            onClick={() => copyToClipboard('/usr/bin/clip-win')}
-          >
+          <Button id="copy-path" onClick={() => copyToClipboard('/usr/bin/clip-win')}>
             <span className="flex items-center justify-center gap-2">
               <Copy className="w-4 h-4" />
               {copied ? 'Copied!' : 'Copy command path'}

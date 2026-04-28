@@ -41,9 +41,9 @@ fn read_autostart_content() -> Option<String> {
 fn get_exec_path() -> String {
     // Priority order for the wrapper/binary
     let possible_paths = [
-        "/usr/bin/clip-win", // Wrapper installed by .deb/.rpm
-        "/usr/local/bin/clip-win", // Manual install with PREFIX=/usr/local
-        "/usr/bin/clip-win-bin", // Direct binary (fallback)
+        "/usr/bin/clip-win",           // Wrapper installed by .deb/.rpm
+        "/usr/local/bin/clip-win",     // Manual install with PREFIX=/usr/local
+        "/usr/bin/clip-win-bin",       // Direct binary (fallback)
         "/usr/local/bin/clip-win-bin", // Direct binary local (fallback)
     ];
 
