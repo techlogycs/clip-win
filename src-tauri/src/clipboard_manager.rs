@@ -178,17 +178,24 @@ pub struct ClipboardManager {
     clipboard_server: Mutex<Option<Child>>,
 }
 
-impl Drop for ClipboardManager {
-    fn drop(&mut self) {
+impl ClipboardManager {
+    /// Kill the tracked clipboard child process (if any) and reap it on a
+    /// background thread so the caller never blocks waiting for the zombie.
+    fn kill_and_reap_child(&self) {
         if let Ok(mut guard) = self.clipboard_server.lock() {
             if let Some(mut child) = guard.take() {
-                // Best-effort kill; reap on background thread so Drop stays non-blocking.
                 let _ = child.kill();
                 std::thread::spawn(move || {
                     let _ = child.wait();
                 });
             }
         }
+    }
+}
+
+impl Drop for ClipboardManager {
+    fn drop(&mut self) {
+        self.kill_and_reap_child();
     }
 }
 
@@ -814,14 +821,7 @@ impl ClipboardManager {
         use std::process::{Command, Stdio};
 
         if kill_previous {
-            if let Ok(mut guard) = self.clipboard_server.lock() {
-                if let Some(mut old_child) = guard.take() {
-                    let _ = old_child.kill();
-                    thread::spawn(move || {
-                        let _ = old_child.wait();
-                    });
-                }
-            }
+            self.kill_and_reap_child();
         }
 
         let mut child = Command::new(cmd)
@@ -894,7 +894,8 @@ mod tests {
     }
 
     fn make_manager(path: &str, max_size: usize) -> ClipboardManager {
-        let p = std::env::temp_dir().join(path);
+        let unique_name = format!("{}_{}", path, Uuid::new_v4());
+        let p = std::env::temp_dir().join(unique_name);
         let _ = std::fs::remove_file(&p);
         ClipboardManager::new(p, max_size)
     }
