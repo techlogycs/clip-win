@@ -888,8 +888,6 @@ impl ClipboardManager {
     }
 }
 
-// --- Tests ---
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -904,8 +902,6 @@ mod tests {
         });
     }
 
-    /// Helper: tries to get a system clipboard. Returns None if display server
-    /// is not available (e.g. headless CI).
     fn try_get_clipboard() -> Option<Clipboard> {
         get_system_clipboard().ok()
     }
@@ -921,7 +917,7 @@ mod tests {
         ClipboardItem::new_text(text.to_string())
     }
 
-    // ── Pure logic tests (no display server needed) ──
+    // ── Pure logic tests (no display server, no sleeps, independent temp dirs) ──
 
     #[test]
     fn should_skip_empty_text() {
@@ -1058,6 +1054,130 @@ mod tests {
         assert!(!m.toggle_pin(&id).unwrap().pinned);
     }
 
+    // ── Integration test: clipboard persistence (display server required) ──
+
+    /// Verifies clipboard data set via set_text_robust can be read back,
+    /// using polling with timeout instead of fixed sleep to avoid flakiness.
+    #[test]
+    fn set_text_robust_persists_data() {
+        init_test_env();
+
+        let mut clipboard = match try_get_clipboard() {
+            Some(c) => c,
+            None => {
+                eprintln!("skipping — no display server");
+                return;
+            }
+        };
+
+        let m = make_manager("persist", 10);
+        let test_text = "persistence-test-42";
+
+        // Set text via robust path (which uses external tools on Linux)
+        m.set_text_robust(test_text)
+            .expect("set_text_robust should succeed");
+
+        // Poll with timeout instead of fixed sleep
+        let deadline = Instant::now() + Duration::from_millis(2000);
+        let mut read_back = Err(arboard::Error::ContentNotAvailable);
+        while Instant::now() < deadline {
+            read_back = clipboard.get_text();
+            if read_back.is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        assert_eq!(
+            read_back.expect("clipboard should be readable within timeout"),
+            test_text,
+            "Clipboard data should persist after set_text_robust"
+        );
+    }
+
+    /// Test that set_html_robust persists HTML content.
+    #[test]
+    fn test_html_robust_persists_data() {
+        init_test_env();
+
+        let mut clipboard = match try_get_clipboard() {
+            Some(c) => c,
+            None => {
+                eprintln!("test_html_robust_persists_data: skipping — no display server available");
+                return;
+            }
+        };
+
+        let m = make_manager("html_persist", 10);
+        let html = "<b>bold text</b>";
+        let plain = "bold text";
+
+        // Set HTML via robust path
+        m.set_html_robust(html, plain)
+            .expect("set_html_robust should succeed");
+
+        // Poll with timeout instead of fixed sleep
+        let deadline = Instant::now() + Duration::from_millis(2000);
+        let mut read_back = Err(arboard::Error::ContentNotAvailable);
+        while Instant::now() < deadline {
+            read_back = clipboard.get_text();
+            if read_back.is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        let text = read_back.unwrap_or_default();
+        assert!(
+            text.contains("bold"),
+            "Plain text fallback should persist after set_html_robust. Got: '{}'",
+            text
+        );
+    }
+
+    /// Test that repeated set_text_robust calls work correctly
+    /// (verifies no regression from adding -loops 0 to xclip)
+    #[test]
+    fn test_repeated_set_text_robust() {
+        init_test_env();
+
+        let mut clipboard = match try_get_clipboard() {
+            Some(c) => c,
+            None => {
+                eprintln!("test_repeated_set_text_robust: skipping — no display server available");
+                return;
+            }
+        };
+
+        let m = make_manager("repeat", 10);
+
+        for i in 0..5 {
+            let text = format!("repeat-test-{}", i);
+            m.set_text_robust(&text).unwrap_or_else(|e| {
+                panic!("set_text_robust iteration {} should succeed: {}", i, e)
+            });
+
+            // Poll with timeout instead of fixed sleep
+            let deadline = Instant::now() + Duration::from_millis(2000);
+            let mut read_back = Err(arboard::Error::ContentNotAvailable);
+            while Instant::now() < deadline {
+                read_back = clipboard.get_text();
+                if read_back.is_ok() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+
+            assert_eq!(
+                read_back.expect("clipboard should be readable within timeout"),
+                text,
+                "Iteration {}: clipboard should contain '{}'",
+                i,
+                text
+            );
+        }
+    }
+
     // ── Integration tests (display server required) ──
 
     #[test]
@@ -1104,113 +1224,5 @@ mod tests {
         let m = make_manager("drop", 10);
         assert_eq!(m.get_max_history_size(), 10);
         drop(m);
-    }
-
-    /// Test that set_text_robust persists clipboard data so it can be read back.
-    /// This verifies the fix for cross-window copy failure caused by xclip
-    /// exiting without `-loops 0` — the data must survive until a paste request.
-    #[test]
-    fn test_text_robust_persists_data() {
-        init_test_env();
-
-        // Only run if we have a functioning display server
-        let mut clipboard = match try_get_clipboard() {
-            Some(c) => c,
-            None => {
-                eprintln!("test_text_robust_persists_data: skipping — no display server available");
-                return;
-            }
-        };
-
-        let m = make_manager("persist", 10);
-        let test_text = "persistence-test-42";
-
-        // Set text via robust path (which uses external tools on Linux)
-        m.set_text_robust(test_text)
-            .expect("set_text_robust should succeed");
-
-        // Small delay to ensure clipboard settles
-        std::thread::sleep(Duration::from_millis(200));
-
-        // Read back the clipboard — data should still be there
-        let read_back = clipboard.get_text().expect("should read back text");
-
-        assert_eq!(
-            read_back, test_text,
-            "Clipboard data should persist after set_text_robust. \
-             Got '{}' instead of '{}'. \
-             This indicates the clipboard tool exited and lost the data.",
-            read_back, test_text
-        );
-    }
-
-    /// Test that set_html_robust persists HTML content.
-    #[test]
-    fn test_html_robust_persists_data() {
-        init_test_env();
-
-        let mut clipboard = match try_get_clipboard() {
-            Some(c) => c,
-            None => {
-                eprintln!("test_html_robust_persists_data: skipping — no display server available");
-                return;
-            }
-        };
-
-        let m = make_manager("html_persist", 10);
-        let html = "<b>bold text</b>";
-        let plain = "bold text";
-
-        // Set HTML via robust path
-        m.set_html_robust(html, plain)
-            .expect("set_html_robust should succeed");
-
-        // Small delay to ensure clipboard settles
-        std::thread::sleep(Duration::from_millis(200));
-
-        // Verify plain text fallback is readable
-        let read_back = clipboard.get_text().expect("should read back text");
-
-        assert!(
-            read_back.contains("bold"),
-            "Plain text fallback should persist after set_html_robust. Got: '{}'",
-            read_back
-        );
-    }
-
-    /// Test that repeated set_text_robust calls work correctly
-    /// (verifies no regression from adding -loops 0 to xclip)
-    #[test]
-    fn test_repeated_set_text_robust() {
-        init_test_env();
-
-        let mut clipboard = match try_get_clipboard() {
-            Some(c) => c,
-            None => {
-                eprintln!("test_repeated_set_text_robust: skipping — no display server available");
-                return;
-            }
-        };
-
-        let m = make_manager("repeat", 10);
-
-        for i in 0..5 {
-            let text = format!("repeat-test-{}", i);
-            m.set_text_robust(&text).unwrap_or_else(|e| {
-                panic!("set_text_robust iteration {} should succeed: {}", i, e)
-            });
-
-            std::thread::sleep(Duration::from_millis(200));
-
-            let read_back = clipboard
-                .get_text()
-                .unwrap_or_else(|e| panic!("iteration {}: should read back text: {}", i, e));
-
-            assert_eq!(
-                read_back, text,
-                "Iteration {}: clipboard should contain '{}' but got '{}'",
-                i, text, read_back
-            );
-        }
     }
 }
