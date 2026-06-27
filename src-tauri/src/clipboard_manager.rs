@@ -1129,12 +1129,15 @@ mod tests {
             .expect("set_text_robust should succeed");
 
         // Poll with timeout instead of fixed sleep
-        let read_back = poll_clipboard_text(&mut clipboard, Duration::from_millis(2000), Duration::from_millis(50))
-            .expect("clipboard should be readable within timeout");
+        let read_back = poll_clipboard_text(
+            &mut clipboard,
+            Duration::from_millis(2000),
+            Duration::from_millis(50),
+        )
+        .expect("clipboard should be readable within timeout");
 
         assert_eq!(
-            read_back,
-            test_text,
+            read_back, test_text,
             "Clipboard data should persist after set_text_robust"
         );
     }
@@ -1161,8 +1164,12 @@ mod tests {
             .expect("set_html_robust should succeed");
 
         // Poll with timeout instead of fixed sleep
-        let read_back = poll_clipboard_text(&mut clipboard, Duration::from_millis(2000), Duration::from_millis(50))
-            .unwrap_or_default();
+        let read_back = poll_clipboard_text(
+            &mut clipboard,
+            Duration::from_millis(2000),
+            Duration::from_millis(50),
+        )
+        .unwrap_or_default();
 
         assert!(
             read_back.contains("bold"),
@@ -1194,15 +1201,17 @@ mod tests {
             });
 
             // Poll with timeout instead of fixed sleep
-            let read_back = poll_clipboard_text(&mut clipboard, Duration::from_millis(2000), Duration::from_millis(50))
-                .expect("clipboard should be readable within timeout");
+            let read_back = poll_clipboard_text(
+                &mut clipboard,
+                Duration::from_millis(2000),
+                Duration::from_millis(50),
+            )
+            .expect("clipboard should be readable within timeout");
 
             assert_eq!(
-                read_back,
-                text,
+                read_back, text,
                 "Iteration {}: clipboard should contain '{}'",
-                i,
-                text
+                i, text
             );
         }
     }
