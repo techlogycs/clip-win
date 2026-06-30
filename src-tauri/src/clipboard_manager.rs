@@ -911,7 +911,10 @@ impl ClipboardManager {
         Ok(())
     }
 
-    fn simulate_paste_action(&self) -> Result<(), String> {
+    fn simulate_paste_action_with_mode(
+        &self,
+        key_mode: crate::input_simulator::PasteKeyMode,
+    ) -> Result<(), String> {
         // Wait for clipboard write to settle
         thread::sleep(Duration::from_millis(60));
 
